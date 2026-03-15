@@ -1,14 +1,14 @@
 {
-	"description": "Megascan link for substance painter, allow to import assets from Quixel Maegascans",
-	"url": "https://github.com/Raider-Arts/painter-megascan-link",
-	"version": "0.1.0",
-	"license": "<a href=\"https://opensource.org/licenses/MIT\">MIT</a>",
-	"third_parties": [
-		{
-			"name": "Megascan Link JS",
-			"description": "Allow to import assets from Quixel Maegascans, needs the counterpart Megascan Link Python plugin",
-			"homepage_url": "https://github.com/Raider-Arts/painter-megascan-link",
-			"license_url": "https://opensource.org/licenses/MIT"
-		}
-	]
+    "description": "Megascan Link JS shim for Substance 3D Painter 10.1+",
+    "url": "https://github.com/Raider-Arts/painter-megascan-link",
+    "version": "1.0.0",
+    "license": "<a href=\"https://opensource.org/licenses/MIT\">MIT</a>",
+    "third_parties": [
+        {
+            "name": "Megascan Link JS Shim",
+            "description": "Thin JavaScript shim used by the Python controller for Painter actions.",
+            "homepage_url": "https://github.com/Raider-Arts/painter-megascan-link",
+            "license_url": "https://opensource.org/licenses/MIT"
+        }
+    ]
 }

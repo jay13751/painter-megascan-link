@@ -1,34 +1,32 @@
-"""Module containing classes used to send data over the JS Plugin
-"""
+"""Module containing classes used to send data over the JS shim plugin."""
 
-import PySide2
-from PySide2 import QtWidgets, QtGui, QtCore
-from . import log, config
+from __future__ import annotations
+
 import json
+import logging
 
-class WebsocketLink(QtCore.QObject):
-	"""Start up a single use websocket to send data over the JS plugin
-	"""	
-	def __init__(self, parent=None):
-		from . import websocket
-		self._create_connection = websocket.create_connection
-		super().__init__(parent=parent)
+from . import log
 
-	def sendDataToJs(self, data: object):
-		"""send the data to the JS plugin using a websocket with port 1212
 
-		:param data: the json data to send
-		:type data: object
-		"""
-		try:
-			ws = self._create_connection("ws://localhost:1212/")
-			log.LoggerLink.Log("Sending data to JS plugin")
-			jsonData = {"data": data,
-						"settings": config.ConfigSettings.getAsDict()}
-			#log.LoggerLink.Log("Data {}".format(str(data)))
-			ws.send(json.dumps(jsonData))
-			ws.close()
-		except Exception as e:
-			log.LoggerLink.Log("WEBSOCKET ERROR: {}".format(str(e)), log.logging.ERROR)
-			log.LoggerLink.Log("CANNOT SEND DATA TO JS", log.logging.ERROR)
+class WebsocketLink(object):
+    """Single-use websocket client used to reach the Painter JS shim."""
 
+    def __init__(self):
+        from . import websocket
+
+        self._create_connection = websocket.create_connection
+
+    def send_payload(self, payload, settings: object, decision: object):
+        try:
+            ws = self._create_connection("ws://localhost:1212/")
+            message = {
+                "payload": payload.to_dict(),
+                "settings": settings,
+                "decision": decision,
+            }
+            log.LoggerLink.Log("Sending normalized payload to JS shim", logging.INFO)
+            ws.send(json.dumps(message))
+            ws.close()
+        except Exception as exc:
+            log.LoggerLink.Log("WEBSOCKET ERROR: {}".format(exc), logging.ERROR)
+            log.LoggerLink.Log("Cannot send data to JS shim", logging.ERROR)

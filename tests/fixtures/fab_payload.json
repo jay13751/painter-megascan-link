@@ -1,0 +1,32 @@
+{
+  "source": "Fab Launcher",
+  "assets": [
+    {
+      "assetId": "fab_asset_01",
+      "assetName": "Forest Moss",
+      "assetType": "surface",
+      "textures": [
+        {"path": "D:/Fab/ForestMoss/albedo.png", "usage": "baseColor", "colorSpace": "sRGB"},
+        {"path": "D:/Fab/ForestMoss/roughness.png", "usage": "roughness", "colorSpace": "Linear"}
+      ],
+      "exportPath": "D:/Fab/ForestMoss",
+      "preview": "D:/Fab/ForestMoss/preview.png"
+    },
+    {
+      "assetId": "fab_asset_02",
+      "assetName": "Temple Statue",
+      "assetType": "model",
+      "textures": [
+        {"path": "D:/Fab/TempleStatue/albedo.png", "usage": "baseColor"}
+      ],
+      "meshes": [
+        {"path": "D:/Fab/TempleStatue/statue.fbx", "meshType": "render"}
+      ],
+      "highPolyMeshes": [
+        {"path": "D:/Fab/TempleStatue/statue_high.fbx", "meshType": "highpoly"}
+      ],
+      "exportPath": "D:/Fab/TempleStatue",
+      "preview": "D:/Fab/TempleStatue/preview.png"
+    }
+  ]
+}

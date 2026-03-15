@@ -1,69 +1,62 @@
+# Painter Megascan Link (Unofficial Maintenance Fork)
 
-# Substance Painter Megascan Link Plugin ![painterversion](https://img.shields.io/badge/painter%20version-2020.1.2%20(6.1.2)-green) ![Tag Release](https://github.com/Raider-Arts/painter-megascan-link/workflows/Tag%20Release/badge.svg) ![pre-release](https://github.com/Raider-Arts/painter-megascan-link/workflows/pre-release/badge.svg) [![Documentation Status](https://readthedocs.org/projects/painter-megascan-link/badge/?version=latest)](https://painter-megascan-link.readthedocs.io/en/latest/?badge=latest)
+This fork revives the original [Raider-Arts painter-megascan-link](https://github.com/Raider-Arts/painter-megascan-link) for modern `Adobe Substance 3D Painter 10.1+`.
 
-<p align="center">
-  <img src="doc/_static/logo_big.gif" width="590" height="320">
-</p>
+It targets the current Painter plugin runtime (`Qt 6`, `PySide6`, `Python 3.11`) and supports `Fab Launcher` using `Custom (socket port)` export.
 
-This plugin enable the import of Megascan Assets using the Custom Socket Export feature of [Quixel Bridge](https://quixel.com/bridge)
+## What changed in this fork
 
-# New version notes
-> **The manual installation starting from version v0.3.0-beta and later are NO LONGER REQUIRED** so you should be able to use the plugin just by installing it with no additional actions.
+- Migrated the Python plugin to a Qt6-friendly import path with a `PySide6` first runtime.
+- Added a payload normalizer for Fab Launcher exports.
+- Moved import decisions into Python, leaving the JavaScript plugin as a thin Painter action shim.
+- Added config migration defaults for new connection/debug options.
+- Added Fab payload fixtures and tests.
 
-## Quick start guide
+## Supported environment
 
-For a complete guide on all the options of the plugin refere to the [How to use documentation](https://painter-megascan-link.readthedocs.io/en/latest/user_guide_usage.html).
+- Painter: `10.1+`
+- OS validation target: Windows
+- Export source: Fab Launcher only
 
- - Download the plugin from the [Release Page](https://github.com/Raider-Arts/painter-megascan-link/releases)
+## Installation
 
- - Install it in Substance Painter by extracting the zip file in the documents folder:
+Painter now separates Python and JavaScript plugin folders.
 
-	- **For Windows 10** ``%userprofile%\Documents\Adobe\Adobe Substance 3D Painter``
-	- **For Linux** ``~/Documents/Adobe/Adobe Substance 3D Painter``
-	- **For MacOS** ``/Users/%username%/Documents/Adobe/Adobe Substance 3D Painter``
+Windows:
+- `%USERPROFILE%\\Documents\\Adobe\\Adobe Substance 3D Painter\\python\\plugins\\megascan_link_python`
+- `%USERPROFILE%\\Documents\\Adobe\\Adobe Substance 3D Painter\\javascript\\plugins\\megascan_link_js`
 
-> :information_source: After you have extracted the archive open up Substance Painter and enable both plugins python 
-> ![enable plugins](doc/_static/enable_plugins.jpg)
+macOS:
+- `~/Documents/Adobe/Adobe Substance 3D Painter/python/plugins/megascan_link_python`
+- `~/Documents/Adobe/Adobe Substance 3D Painter/javascript/plugins/megascan_link_js`
 
- - Select a Megascan Asset you want to export then setup Quixel Bridge to the correct export option and then click Export (Default plugin port is **24981**)
+Copy the two folders from this repository into those locations, then restart Painter or reload plugin folders from Painter's plugin settings.
 
-    ![bridge export](doc/_static/bridge_setup.gif)
+## Fab Launcher setup
 
- - Import the currently exporting Megascan Asset to the current opened Substance Painter project:
+1. Open Fab in Launcher.
+2. Choose a Megascans asset.
+3. Set export target to `Custom (socket port)`.
+4. Use socket port `24981` unless you changed it in the plugin settings.
+5. Export while Painter is running.
 
-    ![painter import](doc/_static/simple_import.gif)
+## Current behavior
 
- - Be sure to change the normal map **Color Space** to **Open Gl**
+- If Painter already has a project open and the export includes mesh assets, the plugin can prompt to create a new project.
+- If no project is open and a mesh asset exists, the plugin can create a Painter project from the first mesh or ask you to choose one.
+- If only textures are exported, the plugin imports them as project resources.
+- Bake settings are still forwarded to the JS shim after project creation.
 
- 	![color space](doc/_static/color_space.gif)
+## Tests
 
-## Need Help?
-You can always open an [issue](https://github.com/Raider-Arts/painter-megascan-link/issues) here on github or [write me a mail](mailto:luc-af@live.it) or write in this forums threads:
+The repository includes payload normalization and config migration tests:
 
-- [Polycount Forum](https://polycount.com/discussion/220704/substance-painter-megascan-link-plugin)
-- [Quixel Forum](https://help.quixel.com/hc/en-us/community/posts/360012105958-Megascan-Link-plugin-for-Substance-Painter)
+```powershell
+pytest tests
+```
 
-# Examples
+## Known limitations
 
-## Import assets into project example
-In this short video you can see how to import Megascan Assets from Quixel Bridge to a Substance Painter project using the Plugin
-
-![painter import](doc/_static/simple_import.gif)
-
-## Create project importing assets
-In this other video you can see how to you can automatically create a project importing some Megascan Assets from Quixel Bridge to Substance Painter
-
-![create project](doc/_static/project_creation.gif)
-
-## Auto bake on project creation
-Here you can see that enabling the bake option in the plguin allow to perform and automatic baking when creating a project using a 3D Mesh (The high polygons meshes are automatically searched and if found they are used as HP meshes reference during the bake)
-
-![bake project](doc/_static/bake_import.gif)
-
-## Want to contribute?
-If you are willing to contribute you should start by [reading the dev docs](https://painter-megascan-link.readthedocs.io/en/latest/).
-
-**Done it?** all right it's time to clone this repository and start coding !!
-
-After you made your changes don't forget to test them!! 
-I hope this plugin helped you. 
+- Painter-side import and project creation still rely on a small QML shim because the original workflow depends on Painter JavaScript APIs.
+- Fab payload formats may continue to evolve. When a new payload shape appears, add a fixture under `tests/fixtures` and extend `megascan_link_python/payloads.py`.
+- This fork does not aim to preserve pre-10.1 Painter compatibility.

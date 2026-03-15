@@ -70,7 +70,7 @@
 }</string>
              </property>
              <property name="text">
-              <string>Changing port number require a restart of the socket after the current timeout expires (so wait at least the current timeout to use the export on Bridge)</string>
+              <string>Changing the port number requires a socket restart after the current timeout expires.</string>
              </property>
              <property name="wordWrap">
               <bool>true</bool>
@@ -491,3 +491,4 @@
  <resources/>
  <connections/>
 </ui>
+

@@ -1,87 +1,53 @@
-"""This Module contains the logger facilities class 
-"""
+"""Logging helpers for the plugin."""
+
+from __future__ import annotations
 
 import logging
-import sys
 
 from . import config
 from . import utilities as util
 
 
 class LoggerLink(object):
-	"""Class used to log messages to the log file
+    _name = ""
+    _logger = None
+    _isSetup = False
 
-	see: :meth:`~referencefixer.log.LoggerLink.Log` for know how to use it to print also to the Python editor output
-	"""	
+    @classmethod
+    def setLoggerName(cls, name: str):
+        if cls._name == "" and cls._isSetup is False:
+            cls._name = name
+            cls._logger = logging.getLogger(name)
 
-	#: Logger name
-	_name = ""
+    @classmethod
+    def setUpLogger(cls):
+        if cls._name == "":
+            cls.setLoggerName("megascanlink")
+        cls._isSetup = True
+        logFormatter = logging.Formatter("%(asctime)s [%(name)s] [%(levelname)s] %(message)s")
+        for handler in list(cls._logger.handlers):
+            cls._logger.removeHandler(handler)
+        filehandler = logging.FileHandler(util.getAbsCurrentPath("{}.log".format(cls._name)), mode="a", encoding="utf-8")
+        filehandler.setFormatter(logFormatter)
+        cls._logger.addHandler(filehandler)
+        cls._logger.setLevel(logging.DEBUG)
 
-	#: Internal reference to the logger
-	_logger = None
-
-	#: Internal state of the logger
-	_isSetup = False
-
-	@classmethod
-	def setLoggerName(cls, name: str):
-		"""Set the current session logger name do this before using the logger and once,
-		subseguent calls to this methos will have no effect
-
-		:param name: the logger name
-		:type name: str
-		"""
-		if(cls._name == "" and cls._isSetup == False):
-			cls._name = name
-			cls._logger = logging.getLogger(name)
-
-	@classmethod
-	def setUpLogger(cls):
-		"""Method used to setup the current logger instance 
-
-		Links the handler to print to the log file (log config path: './referencefixer.log')
-		and set up the format to print with
-		"""
-		if cls._name == "":
-			cls.setLoggerName("undefinedlog")
-		cls._isSetup = True
-		logFormatter = logging.Formatter("%(asctime)s [%(name)s] [%(levelname)s]  %(message)s")
-		for handler in cls._logger.handlers:
-			cls._logger.handlers.pop()
-		filehandler = logging.FileHandler(util.getAbsCurrentPath('{}.log'.format(cls._name)), mode='a')
-		filehandler.setFormatter(logFormatter)
-		cls._logger.addHandler(filehandler)
-		cls._logger.setLevel(logging.DEBUG)
-
-	@classmethod
-	def Log(cls, msg: str, logLevel=logging.INFO):
-		"""Helper function used to log a message to a file or if specified in the config file
-		with the `outputConsole` propriety also to the Python Editor output of Substance Designer
-
-		:param msg: the message to print
-		:type msg: str
-		:param logLevel: the log level to print with if it  is lower than the current :attr:`~megascan_link_python.log.LoggerLink._logger` level it would not be printed, defaults to logging.INFO
-		:type logLevel: int, optional
-		"""		
-		conf = config.ConfigSettings()
-		lvl = ""
-		if not cls._isSetup:
-			cls.setUpLogger()
-		if logLevel == logging.INFO:
-			lvl = "INFO"
-			cls._logger.info(msg)
-		if logLevel ==  logging.WARNING:
-			lvl = "WARNING"
-			cls._logger.warning(msg)
-		if logLevel == logging.ERROR:
-			lvl = "ERROR"
-			cls._logger.error(msg)
-		if logLevel == logging.DEBUG:
-			lvl = "DEBUG"
-			cls._logger.debug(msg)
-		if conf.checkIfOptionIsSet("General", "outputConsole"):
-			print("[{}][{}] {}".format(cls._name, lvl, msg))
-		elif logLevel > logging.DEBUG:
-			# =================================================
-			# Always print to console INFO WARNING and ERROR
-			print("[{}][{}] {}".format(cls._name,lvl,msg))
+    @classmethod
+    def Log(cls, msg: str, logLevel=logging.INFO):
+        conf = config.ConfigSettings()
+        if not cls._isSetup:
+            cls.setUpLogger()
+        if logLevel == logging.INFO:
+            lvl = "INFO"
+            cls._logger.info(msg)
+        elif logLevel == logging.WARNING:
+            lvl = "WARNING"
+            cls._logger.warning(msg)
+        elif logLevel == logging.ERROR:
+            lvl = "ERROR"
+            cls._logger.error(msg)
+        else:
+            lvl = "DEBUG"
+            cls._logger.debug(msg)
+        if conf.checkIfOptionIsSet("General", "outputConsole") or logLevel >= logging.INFO:
+            print("[{}][{}] {}".format(cls._name, lvl, msg))

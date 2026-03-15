@@ -1,173 +1,144 @@
-"""Module containing classes for managing the config settings files or related
-"""
+"""Module containing classes for managing the config settings files or related."""
+
+from __future__ import annotations
+
 import configparser
-import os
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from . import utilities as util
 
 
+DEFAULT_CONFIG: Dict[str, Dict[str, str]] = {
+    "Meta": {"version": "2"},
+    "Connection": {"port": "24981", "timeout": "5", "source": "fab"},
+    "General": {
+        "outputConsole": "false",
+        "askcreateproject": "true",
+        "selectafterimport": "true",
+        "showDependencyError": "true",
+        "debug_payload_logging": "false",
+        "ignore_missing_optional_fields": "true",
+    },
+    "Bake": {
+        "enabled": "false",
+        "resolution": "[12,12]",
+        "maxreardistance": "0.5",
+        "maxfrontaldistance": "0.6",
+        "average": "true",
+        "relative": "true",
+        "ignorebackface": "true",
+        "antialiasing": "Subsampling 2x2",
+    },
+}
+
+
 class ConfigSettings(object):
-	"""Class that manages a config file
-	"""    
-	#: Contains the path to the ini config file (root dir of module) needs to be initialized
-	path = None
-	#: Config parser class instance
-	config = configparser.ConfigParser()
-	#: Current state of the config file
-	opened = False
+    path = None
+    config = configparser.ConfigParser()
+    opened = False
 
-	@classmethod
-	def setIniFilePath(cls, name: str):
-		"""Set the filepath of the ini file
+    @classmethod
+    def setIniFilePath(cls, name: str):
+        cls.path = Path(util.getAbsCurrentPath(name + ".ini"))
 
-		:param name: the name of the config ini file (without extension)
-		:type name: str
-		"""
-		cls.path = Path(util.getAbsCurrentPath(name + ".ini"))
+    @classmethod
+    def getAsDict(cls) -> dict:
+        cls.checkConfigState()
+        return {s: dict(cls.config.items(s)) for s in cls.config.sections()}
 
-	@classmethod
-	def getAsDict(cls) -> dict:
-		"""Helper function that return the current config as a Python dictionary
+    @classmethod
+    def getConfigSettingAsList(cls, cat: str, prop: str, separator=",") -> List[str]:
+        res = cls.getConfigSetting(cat, prop)
+        if res == "":
+            return []
+        return res.split(separator)
 
-		:return: a dictionary of the current ini file
-		:rtype: dict
-		"""
-		cls.checkConfigState()
-		return {s: dict(cls.config.items(s)) for s in cls.config.sections()}
-		
-	@classmethod
-	def getConfigSettingAsList(cls, cat: str, prop: str, separator=",") -> List[str]:
-		"""Helper function to retrive a config option as a list 
+    @classmethod
+    def removeConfigSettings(cls, cat: str, prop: str, flush=True) -> bool:
+        cls.checkConfigState()
+        res = cls.config.remove_option(cat, prop)
+        if flush:
+            cls.flush()
+        return res
 
-		:param cat:  Category name string
-		:type cat: str
-		:param prop: Propriety of the category to retrive as list
-		:type prop: str
-		:param separator: the saparator character used to split values in the config string value, defaults to ","
-		:type separator: str, optional
-		:return: the config settings as a List
-		:rtype: List[str]
-		"""        
-		res = cls.getConfigSetting(cat, prop)
-		if res == "":
-			return list()
-		return res.split(separator)
+    @classmethod
+    def updateConfigSetting(cls, cat: str, prop: str, value: str, flush=True):
+        cls.checkConfigState()
+        if not cls.config.has_section(cat):
+            cls.config.add_section(cat)
+        cls.config[cat][prop] = str(value)
+        if flush:
+            cls.flush()
 
-	@classmethod
-	def removeConfigSettings(cls, cat: str, prop: str, flush=True) -> bool:
-		"""Helper function used to clear an option entry of a Section
+    @classmethod
+    def getConfigSetting(cls, cat: str, prop: str, fallback="") -> str:
+        cls.checkConfigState()
+        return cls.config.get(cat, prop, fallback=fallback)
 
-		:param cat: Category name string
-		:type cat: str
-		:param prop: Propriety of the category to remove
-		:type prop: str
-		:param flush: If true it will immediatly update the file on disk, defaults to True
-		:type flush: bool, optional
-		:return: return True if successfully delete False otherwise
-		:rtype: bool
-		"""
-		cls.checkConfigState()
-		res = cls.config.remove_option(cat,prop)
-		if flush:
-			with open(cls.path, 'w') as configFile:
-				cls.config.write(configFile)
-		return res
+    @classmethod
+    def getConfigCategory(cls, cat: str) -> dict:
+        cls.checkConfigState()
+        if cls.config.has_section(cat):
+            return cls.config[cat]
+        return {}
 
-	@classmethod
-	def updateConfigSetting(cls, cat: str, prop: str, value: str, flush=True):
-		"""Helper function used to update a config propriety.
+    @classmethod
+    def checkConfigState(cls):
+        if cls.path is None:
+            raise RuntimeError("Config path has not been initialized")
+        if not cls.opened:
+            cls.config = configparser.ConfigParser()
+            if cls.path.exists():
+                cls.config.read(cls.path)
+            cls._apply_defaults()
+            cls.opened = True
 
-		:param cat: Category name string
-		:type cat: str
-		:param prop: Propriety of the category to update
-		:type prop: str
-		:param value: Value to associate to the propriety
-		:type value: str
-		:param flush: If true it will immediatly update the file on disk, defaults to True
-		:type flush: bool, optional
-		"""
-		cls.checkConfigState()
-		if not cls.config.has_section(cat):
-			cls.config.add_section(cat)
-		cls.config[cat][prop] = str(value)
-		if flush:
-			with open(cls.path, 'w') as configFile:
-				cls.config.write(configFile)
+    @classmethod
+    def setUpInitialConfig(cls, defaults: configparser.ConfigParser | None = None):
+        if cls.path is None:
+            raise RuntimeError("Config path has not been initialized")
+        cls.config = configparser.ConfigParser()
+        if defaults is not None:
+            cls.config.read_dict({section: dict(defaults[section]) for section in defaults.sections()})
+        else:
+            cls.config.read_dict(DEFAULT_CONFIG)
+        if cls.path.exists():
+            existing = configparser.ConfigParser()
+            existing.read(cls.path)
+            for section in existing.sections():
+                if not cls.config.has_section(section):
+                    cls.config.add_section(section)
+                for key, value in existing.items(section):
+                    cls.config[section][key] = value
+        cls._apply_defaults()
+        cls.flush()
 
-	@classmethod
-	def getConfigSetting(cls, cat: str, prop: str, fallback="") -> str:
-		"""Helper function to retrive a config propriety value.
+    @classmethod
+    def _apply_defaults(cls):
+        changed = False
+        for section, values in DEFAULT_CONFIG.items():
+            if not cls.config.has_section(section):
+                cls.config.add_section(section)
+                changed = True
+            for key, value in values.items():
+                if not cls.config.has_option(section, key):
+                    cls.config[section][key] = value
+                    changed = True
+        if cls.config.get("Meta", "version", fallback="0") != DEFAULT_CONFIG["Meta"]["version"]:
+            cls.config["Meta"]["version"] = DEFAULT_CONFIG["Meta"]["version"]
+            changed = True
+        if changed and cls.path:
+            with open(cls.path, "w", encoding="utf-8") as configFile:
+                cls.config.write(configFile)
 
-		:param cat: Category name string
-		:type cat: str
-		:param prop: Propriety of the category to retrive
-		:type prop: str
-		:return: the propriety value
-		:rtype: str
-		"""
-		cls.checkConfigState()
-		return cls.config.get(cat, prop, fallback=fallback)
-	
-	@classmethod
-	def getConfigCategory(cls, cat: str) -> dict:
-		"""Helper function to retrive an entire category of the ini file
+    @classmethod
+    def checkIfOptionIsSet(cls, cat: str, prop: str, fallback="") -> bool:
+        return cls.getConfigSetting(cat, prop, fallback).lower() in ["true", "yes", "y", "ok", "1"]
 
-		:param cat: Category name string
-		:type cat: str
-		:return: the dictionary containing the proprities with their corrispective values, if the category does not exist and empty dictionary is returned
-		:rtype: str
-		"""
-		cls.checkConfigState()
-		if cls.config.has_section(cat):
-			return cls.config[cat]
-		else:
-			return dict()
-	
-	@classmethod
-	def checkConfigState(cls):
-		"""Check if the current config file is opened if not and the file exist
-		reads and load the content of it to the config parser
-		"""        
-		if not cls.opened and cls.path.exists():
-			cls.config.read(cls.path)
-			cls.opened = True
-
-
-	@classmethod
-	def setUpInitialConfig(cls, config: configparser.ConfigParser):
-		"""Function to use a config parser instance to initialize the config file
-		This will initialize the config file only if it does not exist
-
-		:param config: The config instance to use for populating the initial value of the config
-		:type config: configparser.ConfigParser
-		"""        
-		if not cls.path.exists():
-			with open(cls.path, 'w') as configFile:
-				config.write(configFile)
-
-	@classmethod
-	def checkIfOptionIsSet(cls, cat: str, prop: str, fallback="") -> bool:
-		"""Helper function that will check if a propriety of a section is set or not by confronting
-		it with the following values ["true", "yes", "y", "ok"]
-
-		:param cat: Category name string
-		:type cat: str
-		:param prop: Propriety of the category to check agains
-		:type prop: str
-		:return: if the propriety is set returns True, False otherwise
-		:rtype: bool
-		"""        
-		if cls.getConfigSetting(cat, prop, fallback).lower() in ["true", "yes", "y", "ok"]:
-			return True
-		return False
-
-	@classmethod
-	def flush(cls):
-		"""Helper function used to write the content to file
-		"""	
-		with open(cls.path, 'w') as configFile:
-			cls.config.write(configFile)
-		cls.config.read(cls.path)
-		cls.opened = True
+    @classmethod
+    def flush(cls):
+        with open(cls.path, "w", encoding="utf-8") as configFile:
+            cls.config.write(configFile)
+        cls.opened = False
+        cls.checkConfigState()
