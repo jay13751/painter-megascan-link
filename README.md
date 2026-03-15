@@ -4,6 +4,8 @@ This fork revives the original [Raider-Arts painter-megascan-link](https://githu
 
 It targets the current Painter plugin runtime (`Qt 6`, `PySide6`, `Python 3.11`) and supports `Fab Launcher` using `Custom (socket port)` export.
 
+Current release target: `v0.4.0-beta`
+
 ## What changed in this fork
 
 - Migrated the Python plugin to a Qt6-friendly import path with a `PySide6` first runtime.
