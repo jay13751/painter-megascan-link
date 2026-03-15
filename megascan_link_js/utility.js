@@ -18,7 +18,7 @@ function removeFromAssets(asset, assets) {
 }
 
 function getHpMeshes(asset) {
-    var hpmeshes = asset.high_poly_meshes || [];
+    var hpmeshes = asset.lodList || asset.high_poly_meshes || [];
     var res = [];
     hpmeshes.forEach(function (mesh) {
         res.push(mesh.path);
@@ -27,8 +27,9 @@ function getHpMeshes(asset) {
 }
 
 function firstMeshPath(asset) {
-    if (!asset.meshes || asset.meshes.length === 0) {
+    var meshes = asset.meshList || asset.meshes || [];
+    if (meshes.length === 0) {
         return '';
     }
-    return asset.meshes[0].path;
+    return meshes[0].path;
 }

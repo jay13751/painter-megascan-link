@@ -19,13 +19,24 @@ class WebsocketLink(object):
     def send_payload(self, payload, settings: object, decision: object):
         try:
             ws = self._create_connection("ws://localhost:1212/")
+            action = decision.get("action", "process_payload") if isinstance(decision, dict) else "process_payload"
+            transport_payload = payload.to_transport_dict(action)
             message = {
-                "payload": payload.to_dict(),
+                "payload": transport_payload,
+                "data": transport_payload.get("assets", []),
                 "settings": settings,
                 "decision": decision,
             }
-            log.LoggerLink.Log("Sending normalized payload to JS shim", logging.INFO)
-            ws.send(json.dumps(message))
+            message_json = json.dumps(message)
+            log.LoggerLink.Log(
+                "Sending {} assets to JS shim for action {} ({} bytes)".format(
+                    len(transport_payload.get("assets", [])),
+                    action,
+                    len(message_json.encode("utf-8")),
+                ),
+                logging.INFO,
+            )
+            ws.send(message_json)
             ws.close()
         except Exception as exc:
             log.LoggerLink.Log("WEBSOCKET ERROR: {}".format(exc), logging.ERROR)

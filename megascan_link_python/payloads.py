@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -11,6 +11,22 @@ TEXTURE_KEYS = ("textures", "maps", "components", "files", "packedTextures")
 MESH_KEYS = ("meshes", "models", "meshList")
 LOD_KEYS = ("highPolyMeshes", "lodList", "lods", "highpoly")
 ASSET_LIST_KEYS = ("assets", "payload", "items")
+CORE_TEXTURE_USAGES = {
+    "albedo",
+    "basecolor",
+    "base_color",
+    "diffuse",
+    "normal",
+    "normal_dx",
+    "normalgl",
+    "roughness",
+    "metal",
+    "metalness",
+    "occlusion",
+    "ao",
+    "displacement",
+    "height",
+}
 
 
 @dataclass
@@ -43,7 +59,46 @@ class NormalizedAsset:
     raw: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "export_path": self.export_path,
+            "preview_image": self.preview_image,
+            "textures": [texture.__dict__ for texture in self.textures],
+            "meshes": [mesh.__dict__ for mesh in self.meshes],
+            "high_poly_meshes": [mesh.__dict__ for mesh in self.high_poly_meshes],
+        }
+
+    def to_transport_dict(self, action: str) -> Dict[str, Any]:
+        legacy_kind = _legacy_kind(self.kind, bool(self.meshes))
+        data: Dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "type": legacy_kind,
+        }
+
+        if action in {"import_resources", "warn_no_project", "no_assets"}:
+            transport_textures = _textures_for_transport(self.textures)
+            data["textures"] = transport_textures
+            data["components"] = transport_textures
+            return data
+
+        transport_textures = _textures_for_transport(self.textures)
+        data["textures"] = transport_textures
+        data["components"] = transport_textures
+        if self.meshes:
+            transport_meshes = [{"path": mesh.path} for mesh in self.meshes if mesh.path]
+            data["meshes"] = transport_meshes
+            data["meshList"] = transport_meshes
+        if self.high_poly_meshes:
+            transport_lods = [{"path": mesh.path, "lod": "high"} for mesh in self.high_poly_meshes if mesh.path]
+            data["high_poly_meshes"] = [{"path": mesh.path} for mesh in self.high_poly_meshes if mesh.path]
+            data["lodList"] = transport_lods
+        if self.preview_image:
+            data["preview_image"] = self.preview_image
+        return data
 
 
 @dataclass
@@ -58,6 +113,12 @@ class NormalizedPayload:
             "assets": [asset.to_dict() for asset in self.assets],
         }
 
+    def to_transport_dict(self, action: str) -> Dict[str, Any]:
+        return {
+            "source": self.source,
+            "assets": [asset.to_transport_dict(action) for asset in self.assets],
+        }
+
 
 def normalize_payload(raw_payload: Any) -> NormalizedPayload:
     assets_data = list(_extract_assets(raw_payload))
@@ -68,21 +129,20 @@ def normalize_payload(raw_payload: Any) -> NormalizedPayload:
 def _extract_assets(raw_payload: Any) -> Iterable[Dict[str, Any]]:
     if isinstance(raw_payload, list):
         return [asset for asset in raw_payload if isinstance(asset, dict)]
-
     if not isinstance(raw_payload, dict):
         return []
-
     for key in ASSET_LIST_KEYS:
         candidate = raw_payload.get(key)
         if isinstance(candidate, list):
             return [asset for asset in candidate if isinstance(asset, dict)]
-
     return [raw_payload]
 
 
 def _normalize_asset(asset: Dict[str, Any]) -> NormalizedAsset:
     asset_id = _string(asset.get("assetId") or asset.get("id") or asset.get("uuid"))
-    name = _string(asset.get("assetName") or asset.get("name") or asset_id or "Unnamed Asset")
+    metadata = asset.get("metadata") or {}
+    megascans = metadata.get("megascans") or {}
+    name = _string(asset.get("assetName") or asset.get("name") or megascans.get("name") or asset_id or "Unnamed Asset")
     kind = _normalize_kind(asset)
     textures = _normalize_textures(asset)
     meshes = _normalize_mesh_entries(_collect_entries(asset, MESH_KEYS))
@@ -93,6 +153,7 @@ def _normalize_asset(asset: Dict[str, Any]) -> NormalizedAsset:
         or asset.get("previewImage")
         or asset.get("thumbnail")
         or asset.get("image")
+        or _preview_from_metadata(megascans)
     )
     return NormalizedAsset(
         id=asset_id or name,
@@ -108,12 +169,22 @@ def _normalize_asset(asset: Dict[str, Any]) -> NormalizedAsset:
 
 
 def _normalize_kind(asset: Dict[str, Any]) -> str:
-    kind = _string(asset.get("assetType") or asset.get("type") or asset.get("category") or "").lower()
-    if kind in {"3d", "3dplant", "model", "surface", "atlas", "decal"}:
-        return kind
+    metadata = asset.get("metadata") or {}
+    megascans = metadata.get("megascans") or {}
+    semantic = megascans.get("semanticTags") or {}
+    kind = _string(
+        asset.get("assetType")
+        or asset.get("type")
+        or asset.get("category")
+        or semantic.get("asset_type")
+        or megascans.get("texture_type")
+        or ""
+    ).lower()
+    if kind in {"3d", "3dplant", "model", "surface", "atlas", "decal", "material", "texture-set"}:
+        return "surface" if kind in {"material", "texture-set"} else kind
     if _collect_entries(asset, MESH_KEYS):
         return "3d"
-    if _collect_entries(asset, TEXTURE_KEYS):
+    if _normalize_textures(asset):
         return "surface"
     return kind or "asset"
 
@@ -128,16 +199,33 @@ def _normalize_textures(asset: Dict[str, Any]) -> List[TextureEntry]:
             TextureEntry(
                 path=path,
                 name=_string(entry.get("name") or entry.get("label") or Path(path).stem),
-                usage=_string(
-                    entry.get("usage")
-                    or entry.get("channel")
-                    or entry.get("type")
-                    or entry.get("mapType")
-                ),
+                usage=_string(entry.get("usage") or entry.get("channel") or entry.get("type") or entry.get("mapType")),
                 texture_type=_string(entry.get("type") or entry.get("mimeType") or ""),
                 color_space=_string(entry.get("colorSpace") or entry.get("colorspace") or ""),
             )
         )
+
+    materials = asset.get("materials") or []
+    for material in materials:
+        if not isinstance(material, dict):
+            continue
+        tex_dict = material.get("textures") or {}
+        for usage, path in tex_dict.items():
+            if not path:
+                continue
+            textures.append(
+                TextureEntry(
+                    path=_string(path),
+                    name=_string(material.get("name") or Path(_string(path)).stem),
+                    usage=_string(usage),
+                    color_space="",
+                )
+            )
+
+    for path in asset.get("additional_textures") or []:
+        if path:
+            textures.append(TextureEntry(path=_string(path), name=Path(_string(path)).stem, usage="additional"))
+
     return _dedupe_paths(textures)
 
 
@@ -151,14 +239,7 @@ def _normalize_mesh_entries(entries: List[Dict[str, Any]], high_poly_only: bool 
         mesh_type = _string(entry.get("meshType") or entry.get("type") or "")
         if high_poly_only and not _is_high_poly(lod, mesh_type, path):
             continue
-        meshes.append(
-            MeshEntry(
-                path=path,
-                name=_string(entry.get("name") or Path(path).stem),
-                lod=lod,
-                mesh_type=mesh_type,
-            )
-        )
+        meshes.append(MeshEntry(path=path, name=_string(entry.get("name") or Path(path).stem), lod=lod, mesh_type=mesh_type))
     return _dedupe_paths(meshes)
 
 
@@ -173,20 +254,17 @@ def _collect_entries(asset: Dict[str, Any], keys: Iterable[str]) -> List[Dict[st
                 elif isinstance(item, str):
                     entries.append({"path": item})
         elif isinstance(value, dict):
-            for item in value.values():
+            for sub_key, item in value.items():
                 if isinstance(item, dict):
+                    if "usage" not in item and "type" not in item:
+                        item = {**item, "usage": sub_key}
                     entries.append(item)
                 elif isinstance(item, str):
-                    entries.append({"path": item})
+                    entries.append({"path": item, "usage": sub_key})
     return entries
 
 
-def _discover_export_path(
-    asset: Dict[str, Any],
-    textures: List[TextureEntry],
-    meshes: List[MeshEntry],
-    high_poly_meshes: List[MeshEntry],
-) -> str:
+def _discover_export_path(asset: Dict[str, Any], textures: List[TextureEntry], meshes: List[MeshEntry], high_poly_meshes: List[MeshEntry]) -> str:
     direct = _string(asset.get("exportPath") or asset.get("folder") or asset.get("path") or asset.get("assetPath"))
     if direct and Path(direct).suffix == "":
         return direct
@@ -195,6 +273,13 @@ def _discover_export_path(
             return str(Path(candidate.path).parent)
     if direct:
         return str(Path(direct).parent)
+    return ""
+
+
+def _preview_from_metadata(megascans: Dict[str, Any]) -> str:
+    previews = (megascans.get("previews") or {}).get("images") or []
+    if previews:
+        return _string(previews[0].get("uri") or "")
     return ""
 
 
@@ -218,7 +303,52 @@ def _dedupe_paths(entries: List[Any]) -> List[Any]:
     return result
 
 
+def _textures_for_transport(textures: List[TextureEntry]) -> List[Dict[str, str]]:
+    preferred_by_usage: Dict[str, str] = {}
+    fallback_paths: List[str] = []
+
+    for texture in textures:
+        if not texture.path:
+            continue
+        usage = _canonical_usage(texture.usage)
+        if usage and usage in CORE_TEXTURE_USAGES and usage not in preferred_by_usage:
+            preferred_by_usage[usage] = texture.path
+        elif not usage:
+            fallback_paths.append(texture.path)
+
+    ordered_usages = ("albedo", "normal", "roughness", "metal", "occlusion", "displacement")
+    ordered_paths = [preferred_by_usage[usage] for usage in ordered_usages if usage in preferred_by_usage]
+
+    if not ordered_paths:
+        ordered_paths = fallback_paths[:]
+
+    return [{"path": path} for path in ordered_paths]
+
+
+def _canonical_usage(usage: str) -> str:
+    normalized = usage.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "basecolor": "albedo",
+        "base_color": "albedo",
+        "diffuse": "albedo",
+        "metalness": "metal",
+        "ao": "occlusion",
+        "normal_dx": "normal",
+        "normal_gl": "normal",
+        "normalgl": "normal",
+        "height": "displacement",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _legacy_kind(kind: str, has_meshes: bool) -> str:
+    if kind in {"3d", "3dplant", "model"} or has_meshes:
+        return "3d"
+    return "surface"
+
+
 def _string(value: Optional[Any]) -> str:
     if value is None:
         return ""
     return str(value)
+

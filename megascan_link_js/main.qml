@@ -2,7 +2,6 @@ import QtQuick 2.7
 import Painter 1.0
 import QtWebSockets 1.0
 import QtQuick.Controls 2.0
-import QtQuick.Dialogs 1.2
 import AlgWidgets 2.0
 import QtQuick.Layouts 1.12
 import "utility.js" as Util
@@ -15,24 +14,44 @@ PainterPlugin {
     property var meshAsset: ({})
     property var payload: ({ source: "fab", assets: [] })
     property var decision: ({ action: "process_payload", project_is_open: null })
+    property var pendingMessage: null
+    property var importQueue: []
 
     Component.onCompleted: {
         alg.log.info("Megascan Link JS shim loaded")
     }
 
+    function assetComponents(asset) {
+        return asset.components || asset.textures || []
+    }
+
+    function assetMeshes(asset) {
+        return asset.meshList || asset.meshes || []
+    }
+
     function importResources(assets) {
         alg.log.info("Importing Megascan assets into the current project")
-        var urls = []
+        importQueue = []
+        alg.log.info("Import batch contains {} assets".format((assets || []).length))
         assets.forEach(function (asset) {
-            (asset.textures || []).forEach(function (bitmap) {
-                var usages = alg.resources.allowedUsages(bitmap.path)
-                var length = urls.push(alg.resources.importProjectResource(bitmap.path, usages, "Megascan/{}({})".format(asset.name, asset.id)))
-                alg.log.info("Resource imported: {}".format(urls[length - 1]))
+            var textures = assetComponents(asset)
+            alg.log.info("Importing asset {} ({}) with {} textures".format(asset.name, asset.id, textures.length))
+            textures.forEach(function (bitmap) {
+                if (bitmap.path) {
+                    importQueue.push({
+                        assetName: asset.name,
+                        assetId: asset.id,
+                        path: bitmap.path
+                    })
+                }
             })
         })
-        if (Util.checkIfSettingsIsSet(megascanlink.settings.General.selectafterimport)) {
-            alg.resources.selectResources(urls)
+        if (importQueue.length === 0) {
+            alg.log.warning("No compatible textures queued for import")
+            return
         }
+        alg.log.info("Queued {} texture imports".format(importQueue.length))
+        resourceImportTimer.start()
     }
 
     function setUpAndBake(asset) {
@@ -74,7 +93,7 @@ PainterPlugin {
             }
             alg.log.info("Creating project with mesh: {}".format(asset.name))
             var bitmaps = []
-            ;(asset.textures || []).forEach(function (bitmap) {
+            ;assetComponents(asset).forEach(function (bitmap) {
                 bitmaps.push(alg.fileIO.localFileToUrl(bitmap.path))
             })
             alg.project.create(alg.fileIO.localFileToUrl(meshPath), bitmaps)
@@ -90,7 +109,7 @@ PainterPlugin {
     function checkForMeshAssets(assets) {
         var meshes = []
         assets.forEach(function (asset) {
-            if ((asset.meshes || []).length > 0 || asset.kind === "3d" || asset.kind === "3dplant" || asset.kind === "model") {
+            if (assetMeshes(asset).length > 0 || asset.kind === "3d" || asset.kind === "3dplant" || asset.kind === "model" || asset.type === "3d" || asset.type === "3dplant") {
                 meshes.push(asset)
             }
         })
@@ -158,13 +177,61 @@ PainterPlugin {
         onClientConnected: {
             alg.log.info("Megascan Link Python connection established")
             webSocket.onTextMessageReceived.connect(function (message) {
-                var pythondata = JSON.parse(message)
-                megascanlink.payload = pythondata.payload || { source: "fab", assets: [] }
-                megascanlink.settings = pythondata.settings || {}
-                megascanlink.decision = pythondata.decision || { action: "process_payload", project_is_open: null }
-                var meshCheck = checkForMeshAssets(megascanlink.payload.assets || [])
-                handleDecision(meshCheck)
+                alg.log.info("Megascan Link JS received payload ({} chars)".format(message.length))
+                megascanlink.pendingMessage = message
+                processMessage.start()
             })
+        }
+    }
+
+    Timer {
+        id: processMessage
+        interval: 0
+        repeat: false
+        onTriggered: {
+            if (!megascanlink.pendingMessage) {
+                return
+            }
+            var pythondata = JSON.parse(megascanlink.pendingMessage)
+            megascanlink.pendingMessage = null
+            megascanlink.payload = pythondata.payload || { source: "fab", assets: [] }
+            megascanlink.settings = pythondata.settings || {}
+            megascanlink.decision = pythondata.decision || { action: "process_payload", project_is_open: null }
+            alg.log.info("Megascan Link handling action {} with {} assets".format(megascanlink.decision.action, (megascanlink.payload.assets || []).length))
+            var meshCheck = checkForMeshAssets(megascanlink.payload.assets || [])
+            alg.log.info("Mesh check result: {} mesh assets".format(meshCheck.count))
+            handleDecision(meshCheck)
+        }
+    }
+
+    Timer {
+        id: resourceImportTimer
+        interval: 0
+        repeat: true
+        property var urls: []
+
+        onTriggered: {
+            if (megascanlink.importQueue.length === 0) {
+                stop()
+                if (Util.checkIfSettingsIsSet(megascanlink.settings.General.selectafterimport) && urls.length > 0) {
+                    alg.resources.selectResources(urls)
+                }
+                alg.log.info("Megascan resource import queue completed")
+                urls = []
+                return
+            }
+
+            var job = megascanlink.importQueue.shift()
+            alg.log.info("Resolving usages for {}".format(job.path))
+            try {
+                var usages = alg.resources.allowedUsages(job.path)
+                alg.log.info("Importing resource {}".format(job.path))
+                var imported = alg.resources.importProjectResource(job.path, usages, "Megascan/{}({})".format(job.assetName, job.assetId))
+                urls.push(imported)
+                alg.log.info("Resource imported: {}".format(imported))
+            } catch (error) {
+                alg.log.error("Failed to import resource {}: {}".format(job.path, error))
+            }
         }
     }
 

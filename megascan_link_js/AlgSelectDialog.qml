@@ -1,7 +1,6 @@
 import QtQuick 2.7
 import Painter 1.0
 import QtQuick.Controls 2.0
-import QtQuick.Dialogs 1.2
 import AlgWidgets 2.0
 import QtQuick.Layouts 1.12
 import "utility.js" as Util
