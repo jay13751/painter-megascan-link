@@ -1,0 +1,14 @@
+{
+    "description": "Megascan Link JS shim for Substance 3D Painter 10.1+",
+    "url": "https://github.com/jay13751/painter-megascan-link",
+    "version": "0.4.0-beta",
+    "license": "<a href=\"https://opensource.org/licenses/MIT\">MIT</a>",
+    "third_parties": [
+        {
+            "name": "Megascan Link JS Shim",
+            "description": "Thin JavaScript shim used by the Python controller for Painter actions.",
+            "homepage_url": "https://github.com/jay13751/painter-megascan-link",
+            "license_url": "https://opensource.org/licenses/MIT"
+        }
+    ]
+}
