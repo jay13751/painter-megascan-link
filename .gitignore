@@ -12,3 +12,7 @@ copytopainter.py
 
 #ingore temp folders
 temp/
+# local Python env
+.venv/
+__pycache__/
+*.pyc
