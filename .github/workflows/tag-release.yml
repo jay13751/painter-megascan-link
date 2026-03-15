@@ -24,12 +24,13 @@ jobs:
         if: success()
         run: |
           cd $GITHUB_WORKSPACE
-          mkdir plugins
+          mkdir javascript
+          mkdir javascript/plugins
           mkdir python
           mkdir python/plugins
-          mv megascan_link_js/ plugins/
+          mv megascan_link_js/ javascript/plugins/
           mv megascan_link_python/ python/plugins/
-          zip -r "${{ env.NAME }}.zip" python plugins
+          zip -r "${{ env.NAME }}.zip" python javascript
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         if: success()
